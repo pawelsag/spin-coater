@@ -17,6 +17,7 @@
 #include "string.h"
 #include "pico/stdlib.h"
 #include <stdlib.h>
+#include <sys/types.h>
 
 #define PWM_GP_NUM 2
 /* When using pwm 60 hz, we can set duty between 6-12 */
@@ -24,20 +25,23 @@
 #define PWM_INIT_FREQ 490
 #define PWM_INIT_DUTY 49
 
+uint64_t reset_counter = 0;
 uint64_t last_time;
 uint64_t current_time_us;
 uint64_t time_elapsed_us;
 
+
 void gpio_callback(uint gpio, uint32_t events) {
-  if (last_time == 0){
+
+  if (reset_counter == 0){
     last_time = time_us_64();
+    reset_counter++;
     return;
   }
+  reset_counter = 0;
   current_time_us = time_us_64();
   time_elapsed_us = current_time_us - last_time;
-  last_time = current_time_us;
-  printf("RPM: %llu\r\n", 60000000/time_elapsed_us);
-
+  printf("RPM: %llu\r\n", 60000000/time_elapsed_us/2);
 }
 
 
