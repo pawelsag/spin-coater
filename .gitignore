@@ -1,0 +1,6 @@
+build/
+libs/
+.vscode/
+.cache
+compile_commands.json
+wifi.conf
