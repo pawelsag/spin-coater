@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import time
 import socket
 
 from PyQt6.QtWidgets import (
@@ -17,8 +18,19 @@ from PyQt6.QtCore import Qt, QThread
 min_duty_cycle = 49
 max_duty_cycle = 98
 current_rpm = 0
+max_rpm_value = 7000
+
 
 class spin_coater():
+
+    class CountdownThread(QThread):
+
+        def run(self):
+            seconds_left = self.parent.spin_time_int
+            while seconds_left > 0 and self.parent.spin_started:
+                time.sleep(1)
+                seconds_left -= 1
+                self.parent.spin_time_left_label.setText(f"{seconds_left} sec")
 
     class WorkerThread(QThread):
 
@@ -34,17 +46,35 @@ class spin_coater():
                     print("Empty packet received")
                     continue
 
-                key,value = data[-1].split(":")
-                if key.strip() == "rpm":
-                    self.parent.current_rpm_label.setText(value.strip())
-                elif key.strip() == "pwm":
-                    self.parent.current_duty_cycle.setText(value.strip())
-                    print(f"Duty Cycle: {value.strip()}")
-                else:
-                    print(f"Unknown format: {data[-1]}")
+                for entry in data:
+                    if ":" in entry:
+                        key,value = entry.split(":")
+                    else:
+                        key = entry
+
+                    if key.strip() == "rpm":
+                        self.parent.current_rpm_label.setText(value.strip())
+                        print(data)
+                    elif key.strip() == "pwm":
+                        self.parent.current_duty_cycle.setText(value.strip())
+                        print(f"Duty Cycle: {value.strip()}")
+                    elif key.strip() == "spin_started":
+                        self.parent.spin_apply_button.setText("Stop spinning")
+                        self.parent.spin_started = True
+                        self.parent.countdownThread = spin_coater.CountdownThread()
+                        self.parent.countdownThread.parent = self.parent
+                        self.parent.countdownThread.start()
+                        print(f"Duty Cycle: {value.strip()}")
+                    elif key.strip() == "spin_stopped":
+                        self.parent.spin_apply_button.setText("Start spinning")
+                        self.parent.spin_started = False
+                        self.parent.spin_time_left_label.setText(f"0 sec")
+                    else:
+                        print(f"Unknown format: {entry}, {key}")
 
     def __init__(self):
         self.connected = False
+        self.spin_started = False
 
     def __duty_cycle_changed_callback(self):
         duty_cycle_int = int(self.duty_cycle_input.text())
@@ -83,6 +113,22 @@ class spin_coater():
         self.workerThread.finished.connect(self.workerThread.deleteLater)
         self.workerThread.start()
 
+    def __change_spin_state(self):
+        if self.spin_started:
+            self.connection_sock.send(f"spin_stop\n".encode('utf-8'));
+            return
+
+        self.spin_time_int = int(self.spin_time_input.text())
+        self.spin_rpm_int = int(self.spin_rpm_input.text())
+        self.spin_time_input.setText("")
+        self.spin_rpm_input.setText("")
+        if self.spin_rpm_int > max_rpm_value :
+            print(f"Max RPM value is {max_rpm_value}.")
+            return
+
+        if self.connected:
+            self.connection_sock.send(f"spin_start: {self.spin_time_int} {self.spin_rpm_int}\n".encode('utf-8'));
+
     def start_gui(self):
         self.app = QApplication([])
         self.window = QWidget()
@@ -105,6 +151,7 @@ class spin_coater():
         self.duty_cycle_input = QLineEdit()
         self.duty_cycle_input.setValidator(QIntValidator())
         self.duty_cycle_input.setMaxLength(3)
+        self.duty_cycle_input.setPlaceholderText("PWM duty - debug mode")
         self.duty_cycle_input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.duty_cycle_input.returnPressed.connect(self.__duty_cycle_changed_callback)
 
@@ -114,14 +161,32 @@ class spin_coater():
         self.current_rpm_label = QLabel()
         self.current_rpm_label.setText(f"{current_rpm}")
 
+        self.spin_time_left_label = QLabel()
+        self.spin_time_left_label.setText("0 sec")
+
         # Time managment UI
+        self.spin_rpm_input = QLineEdit()
+        self.spin_rpm_input.setPlaceholderText(f"Spin RPM (max: {max_rpm_value})")
+        self.spin_rpm_input.setValidator(QIntValidator())
+        self.spin_time_input = QLineEdit()
+        self.spin_time_input.setPlaceholderText("Spin time (seconds)")
+        self.spin_time_input.setValidator(QIntValidator())
+        self.spin_apply_button = QPushButton("Start spinning")
+        self.spin_apply_button.clicked.connect(self.__change_spin_state)
+        spin_layout = QHBoxLayout()
+        spin_layout.addWidget(self.spin_rpm_input)
+        spin_layout.addWidget(self.spin_time_input)
+        spin_layout.addWidget(self.spin_apply_button)
+
 
         # Main grid ui section
         self.flo = QFormLayout()
         self.flo.addRow(f"Network:", network_layout)
+        self.flo.addRow(f"Main Spin settings:", spin_layout)
         self.flo.addRow(f"Duty cycle ({min_duty_cycle} < {max_duty_cycle}):", self.duty_cycle_input)
         self.flo.addRow("Current PWM duty cycle: ", self.current_duty_cycle)
         self.flo.addRow("Current RPM: ", self.current_rpm_label)
+        self.flo.addRow("Spin time left: ", self.spin_time_left_label)
 
         self.window.setLayout(self.flo)
         self.window.show()
