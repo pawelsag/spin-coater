@@ -55,6 +55,7 @@ typedef struct {
   server_state_t  state;
   uint32_t pwm_duty;
   uint32_t spin_time;
+  uint slice_num;
 } spin_couter_context_t;
 
 static err_t
@@ -124,7 +125,7 @@ bool set_pwm_safe(spin_couter_context_t* ctx, unsigned duty)
 
   ctx->pwm_duty = duty;
   DEBUG_printf("\n PWM set to: %lu!\n", duty);
-  return pwm_set_freq_duty(duty, PWM_CHAN_A, PWM_INIT_FREQ, duty);
+  return pwm_set_freq_duty(ctx->slice_num, PWM_CHAN_A, PWM_INIT_FREQ, duty);
 }
 
 
@@ -325,11 +326,7 @@ tcp_server_open(void* ctx_)
 }
 
 
-void run_tcp_server_test(void) {
-    spin_couter_context_t* sp_ctx = tcp_server_init();
-    if (!sp_ctx) {
-        return;
-    }
+void run_tcp_server_test(spin_couter_context_t* sp_ctx) {
     if (!tcp_server_open(sp_ctx)) {
         return;
     }
@@ -396,7 +393,13 @@ int main() {
     } else {
         printf("Connected.\n");
     }
-    run_tcp_server_test();
+
+    spin_couter_context_t* sp_ctx = tcp_server_init();
+    if (!sp_ctx) {
+        return -1;
+    }
+    sp_ctx->slice_num = slice_num;
+    run_tcp_server_test(sp_ctx);
     cyw43_arch_deinit();
     return 0;
 }
