@@ -56,17 +56,17 @@ typedef struct {
   uint32_t pwm_duty;
   uint32_t spin_time;
   uint slice_num;
-} spin_couter_context_t;
+} spin_coater_context_t;
 
 static err_t
-tcp_server_send_data(spin_couter_context_t* ctx,
+tcp_server_send_data(spin_coater_context_t* ctx,
                      struct tcp_pcb*       tpcb,
                      const uint8_t*              data,
                      u16_t                 size);
 
 template<typename Callable>
 static void
-command_handler(spin_couter_context_t* ctx, uint8_t* buffer, Callable &feedback);
+command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable &feedback);
 
 void gpio_callback(uint gpio, uint32_t events) {
 
@@ -118,7 +118,7 @@ bool pwm_set_freq_duty(uint32_t slice_num, uint32_t chan, uint32_t freq,
 
     return true;
 }
-bool set_pwm_safe(spin_couter_context_t* ctx, unsigned duty)
+bool set_pwm_safe(spin_coater_context_t* ctx, unsigned duty)
 {
   if(duty < 49 || duty > 98)
     return false;
@@ -129,8 +129,8 @@ bool set_pwm_safe(spin_couter_context_t* ctx, unsigned duty)
 }
 
 
-static spin_couter_context_t* tcp_server_init(void) {
-    spin_couter_context_t *ctx = (spin_couter_context_t*)calloc(1, sizeof(spin_couter_context_t));
+static spin_coater_context_t* tcp_server_init(void) {
+    spin_coater_context_t *ctx = (spin_coater_context_t*)calloc(1, sizeof(spin_coater_context_t));
     if (!ctx) {
         DEBUG_printf("failed to allocate state\n");
         return NULL;
@@ -139,7 +139,7 @@ static spin_couter_context_t* tcp_server_init(void) {
 }
 
 static err_t tcp_server_close(void *arg) {
-    spin_couter_context_t *sp_ctx = (spin_couter_context_t*)arg;
+    spin_coater_context_t *sp_ctx = (spin_coater_context_t*)arg;
     tcp_server_context_t *ctx = &sp_ctx->ctx;
     err_t err = ERR_OK;
     if (ctx->client_pcb != NULL) {
@@ -166,13 +166,13 @@ static err_t tcp_server_close(void *arg) {
 static err_t
 tcp_server_sent(void* ctx_, struct tcp_pcb* tpcb, u16_t len)
 {
-  spin_couter_context_t* ctx = (spin_couter_context_t*) ctx_;
+  spin_coater_context_t* ctx = (spin_coater_context_t*) ctx_;
 
   return ERR_OK;
 }
 
 static err_t
-tcp_server_send_data(spin_couter_context_t* ctx,
+tcp_server_send_data(spin_coater_context_t* ctx,
                      struct tcp_pcb*       tpcb,
                      const uint8_t*        data,
                      u16_t                 size)
@@ -182,7 +182,7 @@ tcp_server_send_data(spin_couter_context_t* ctx,
 
 
 static void
-tcp_command_handler(spin_couter_context_t* sp_ctx, struct tcp_pcb* tpcb)
+tcp_command_handler(spin_coater_context_t* sp_ctx, struct tcp_pcb* tpcb)
 {
   auto feedback_send = [&sp_ctx, &tpcb](const char* msg, const size_t msg_len){
     tcp_server_send_data(sp_ctx,
@@ -196,7 +196,7 @@ tcp_command_handler(spin_couter_context_t* sp_ctx, struct tcp_pcb* tpcb)
 
 template<typename Callable>
 static void
-command_handler(spin_couter_context_t* ctx, uint8_t* buffer, Callable &feedback)
+command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable &feedback)
 {
   unsigned arg;
   char     str_arg[BUF_SIZE];
@@ -219,7 +219,7 @@ command_handler(spin_couter_context_t* ctx, uint8_t* buffer, Callable &feedback)
 err_t
 tcp_server_recv(void* ctx_, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 {
-  spin_couter_context_t* sp_ctx = (spin_couter_context_t*)ctx_;
+  spin_coater_context_t* sp_ctx = (spin_coater_context_t*)ctx_;
   tcp_server_context_t* ctx = &sp_ctx->ctx;
 
   if (!p) {
@@ -255,7 +255,7 @@ tcp_server_recv(void* ctx_, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 static void
 tcp_server_err(void* ctx_, err_t err)
 {
-  spin_couter_context_t* sp_ctx = (spin_couter_context_t*)ctx_;
+  spin_coater_context_t* sp_ctx = (spin_coater_context_t*)ctx_;
 
   if (err != ERR_ABRT) {
     DEBUG_printf("tcp_client_err_fn %d\n", err);
@@ -267,7 +267,7 @@ tcp_server_err(void* ctx_, err_t err)
 static err_t
 tcp_server_accept(void* ctx_, struct tcp_pcb* client_pcb, err_t err)
 {
-  spin_couter_context_t* sp_ctx = (spin_couter_context_t*)ctx_;
+  spin_coater_context_t* sp_ctx = (spin_coater_context_t*)ctx_;
 
   if (err != ERR_OK || client_pcb == NULL) {
     DEBUG_printf("Failure in accept\n");
@@ -291,7 +291,7 @@ tcp_server_accept(void* ctx_, struct tcp_pcb* client_pcb, err_t err)
 static bool
 tcp_server_open(void* ctx_)
 {
-  spin_couter_context_t* sp_ctx = (spin_couter_context_t*)ctx_;
+  spin_coater_context_t* sp_ctx = (spin_coater_context_t*)ctx_;
   tcp_server_context_t* ctx = &sp_ctx->ctx;
   DEBUG_printf("Starting server at %s on port %u\n",
                ip4addr_ntoa(netif_ip4_addr(netif_list)),
@@ -326,7 +326,7 @@ tcp_server_open(void* ctx_)
 }
 
 
-void run_tcp_server_test(spin_couter_context_t* sp_ctx) {
+void run_tcp_server_test(spin_coater_context_t* sp_ctx) {
     if (!tcp_server_open(sp_ctx)) {
         return;
     }
@@ -394,7 +394,7 @@ int main() {
         printf("Connected.\n");
     }
 
-    spin_couter_context_t* sp_ctx = tcp_server_init();
+    spin_coater_context_t* sp_ctx = tcp_server_init();
     if (!sp_ctx) {
         return -1;
     }

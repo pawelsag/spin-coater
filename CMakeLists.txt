@@ -12,24 +12,24 @@ set(PICO_PLATFORM rp2040) # Set the board used
 pico_sdk_init()
 
 
-add_executable(spin_couter
-        spin_couter.cc
+add_executable(spin_coater
+        spin_coater.cc
         )
 
-target_include_directories(spin_couter PRIVATE
+target_include_directories(spin_coater PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
         )
 
-target_compile_definitions(spin_couter PRIVATE
+target_compile_definitions(spin_coater PRIVATE
         WIFI_SSID=\"${WIFI_SSID}\"
         WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
         )
 
 # pull in common dependencies and additional pwm hardware support
-target_link_libraries(spin_couter pico_stdlib hardware_pwm pico_cyw43_arch_lwip_threadsafe_background)
+target_link_libraries(spin_coater pico_stdlib hardware_pwm pico_cyw43_arch_lwip_threadsafe_background)
 
 # create map/bin/hex file etc.
-pico_add_extra_outputs(spin_couter)
-pico_enable_stdio_usb(spin_couter 1)
-pico_enable_stdio_uart(spin_couter 1)
+pico_add_extra_outputs(spin_coater)
+pico_enable_stdio_usb(spin_coater 1)
+pico_enable_stdio_uart(spin_coater 1)
 

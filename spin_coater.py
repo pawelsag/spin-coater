@@ -18,7 +18,7 @@ min_duty_cycle = 49
 max_duty_cycle = 98
 current_rpm = 0
 
-class spin_couter():
+class spin_coater():
 
     class WorkerThread(QThread):
 
@@ -130,5 +130,5 @@ class spin_couter():
 
 
 if __name__ == "__main__":
-    sc = spin_couter()
+    sc = spin_coater()
     sc.start_gui()
