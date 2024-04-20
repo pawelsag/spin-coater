@@ -161,19 +161,6 @@ set_pwm_safe(spin_coater_context_t* ctx, unsigned duty)
   return pwm_set_freq_duty(ctx->pwm_slice_num, PWM_CHAN_A, PWM_INIT_FREQ, duty);
 }
 
-static spin_coater_context_t*
-tcp_server_init(void)
-{
-  spin_coater_context_t* ctx =
-    (spin_coater_context_t*)calloc(1, sizeof(spin_coater_context_t));
-  if (!ctx) {
-    DEBUG_printf("failed to allocate state\n");
-    return NULL;
-  }
-
-  return ctx;
-}
-
 static err_t
 tcp_server_close(void* arg)
 {
@@ -503,10 +490,13 @@ main()
     printf("Connected.\n");
   }
 
-  spin_coater_context_t* sp_ctx = tcp_server_init();
+  spin_coater_context_t* sp_ctx =
+    (spin_coater_context_t*)calloc(1, sizeof(spin_coater_context_t));
   if (!sp_ctx) {
-    return 0;
+    DEBUG_printf("failed to allocate state\n");
+    return 1;
   }
+
   sp_ctx->pwm_slice_num = slice_num;
   sp_ctx->pwm_duty = PWM_IDLE_DUTY;
   sp_ctx->set_rpm = 0;
