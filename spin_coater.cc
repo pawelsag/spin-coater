@@ -37,8 +37,8 @@
 #define PWM_HEAVY_LOADED_IDLE_DUTY 52
 
 /* Since distance between wholes is not ideally equal
-   we use count_of_measurements variable to omit in between wholes and meassure time
-   after full cycle */
+   we use count_of_measurements variable to omit in between wholes and meassure
+   time after full cycle */
 constexpr uint64_t number_of_wholes = 2;
 uint64_t count_of_measurements;
 
@@ -406,42 +406,55 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
   if (!tcp_server_open(sp_ctx)) {
     return;
   }
-
+  constexpr uint32_t timer_fast_inc_time = 50;
+  constexpr uint32_t timer_mid_inc_time = 500;
+  constexpr uint32_t timer_slow_inc_time = 1000;
+  constexpr uint32_t timer_rpm_update_time = 300;
+  constexpr const char* rpm_str = "rpm: %u\n";
   absolute_time_t rpm_update_deadline = make_timeout_time_ms(300);
-  absolute_time_t timer_update_deadline = make_timeout_time_ms(1);
-  const char* rpm_str = "rpm: %u\n";
-  char send_buf[BUF_SIZE];
+  absolute_time_t timer_update_deadline = make_timeout_time_ms(300);
+
   while (sp_ctx->connection_state != STATE_DISCONNECTED) {
-    cyw43_arch_wait_for_work_until(sp_ctx->spin_state == SPIN_STARTED_WITH_TIMER
-                                     ? timer_update_deadline
-                                     : rpm_update_deadline);
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(50));
     cyw43_arch_poll();
 
-    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_update_deadline) {
+    // Send RPM update when spinner is active and rpm update deadline is
+    // outdated
+    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_update_deadline &&
+        sp_ctx->spin_state != SPIN_IDLE) {
       rpm_update_deadline = make_timeout_time_ms(300);
 
-      int number_of_chars =
-        snprintf(send_buf,
-                 BUF_SIZE,
-                 rpm_str,
-                 current_rpm);
+      char send_buf[BUF_SIZE];
+      int number_of_chars = snprintf(send_buf, BUF_SIZE, rpm_str, current_rpm);
 
       tcp_server_send_data(sp_ctx,
                            sp_ctx->ctx.client_pcb,
                            (const uint8_t*)send_buf,
                            number_of_chars);
     }
+
+    // In automatic spin mode calculate and control the pwm paramters to
+    // increase or desrease the spinning RPM
     if (sp_ctx->ctx.client_pcb && get_absolute_time() > timer_update_deadline &&
         sp_ctx->spin_state == SPIN_STARTED_WITH_TIMER) {
       if (current_rpm < sp_ctx->set_rpm - 200) {
         sp_ctx->pwm_duty++;
         set_pwm_safe(sp_ctx, sp_ctx->pwm_duty);
-      }else if(current_rpm > sp_ctx->set_rpm + 300)
-      {
+      } else if (current_rpm > sp_ctx->set_rpm + 300) {
         sp_ctx->pwm_duty--;
         set_pwm_safe(sp_ctx, sp_ctx->pwm_duty);
       }
-      timer_update_deadline = make_timeout_time_ms(1000);
+
+      auto time_diff = std::abs(int(current_rpm) - int(sp_ctx->set_rpm));
+      if(time_diff > 2000 )
+      {
+        timer_update_deadline = make_timeout_time_ms(timer_fast_inc_time);
+      }else if(time_diff > 1000){
+        timer_update_deadline = make_timeout_time_ms(timer_mid_inc_time);
+      }else if(time_diff > 500){
+        timer_update_deadline = make_timeout_time_ms(timer_slow_inc_time);
+      }
+
     }
   }
 
