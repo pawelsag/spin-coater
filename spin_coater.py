@@ -15,8 +15,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIntValidator,QFont
 from PyQt6.QtCore import Qt, QThread
-min_duty_cycle = 49
-max_duty_cycle = 98
+min_duty_cycle = 48
+max_duty_cycle = 2048
 current_rpm = 0
 max_rpm_value = 7000
 
@@ -55,7 +55,7 @@ class spin_coater():
                     if key.strip() == "rpm":
                         self.parent.current_rpm_label.setText(value.strip())
                         print(data)
-                    elif key.strip() == "pwm":
+                    elif key.strip() == "dshot":
                         self.parent.current_duty_cycle.setText(value.strip())
                         print(f"Duty Cycle: {value.strip()}")
                     elif key.strip() == "spin_started":
@@ -81,13 +81,13 @@ class spin_coater():
         self.duty_cycle_input.setText("")
         if duty_cycle_int < min_duty_cycle:
             duty_cycle_int = min_duty_cycle
-            print(f"Setting duty cycle to min={duty_cycle_int}")
+            print(f"Setting dshot to min={duty_cycle_int}")
         elif duty_cycle_int > max_duty_cycle:
-            print(f"Duty cycle should be in scope ({min_duty_cycle} <= x <= {max_duty_cycle})")
+            print(f"Dshot should be in scope ({min_duty_cycle} <= x <= {max_duty_cycle})")
             return
 
         if self.connected:
-            self.connection_sock.send(f"pwm: {duty_cycle_int}\n".encode('utf-8'));
+            self.connection_sock.send(f"dshot: {duty_cycle_int}\n".encode('utf-8'));
 
     def __net_connection_change_callback(self, shutdown=False):
         if self.connected or shutdown:
@@ -147,11 +147,11 @@ class spin_coater():
         network_layout.addWidget(self.net_port_input)
         network_layout.addWidget(self.net_connect)
 
-        # PWM management ui section
+        # DSHOT management ui section
         self.duty_cycle_input = QLineEdit()
         self.duty_cycle_input.setValidator(QIntValidator())
         self.duty_cycle_input.setMaxLength(3)
-        self.duty_cycle_input.setPlaceholderText("PWM duty - debug mode")
+        self.duty_cycle_input.setPlaceholderText("DSHOT - debug mode")
         self.duty_cycle_input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.duty_cycle_input.returnPressed.connect(self.__duty_cycle_changed_callback)
 
@@ -183,8 +183,8 @@ class spin_coater():
         self.flo = QFormLayout()
         self.flo.addRow(f"Network:", network_layout)
         self.flo.addRow(f"Main Spin settings:", spin_layout)
-        self.flo.addRow(f"Duty cycle ({min_duty_cycle} < {max_duty_cycle}):", self.duty_cycle_input)
-        self.flo.addRow("Current PWM duty cycle: ", self.current_duty_cycle)
+        self.flo.addRow(f"Dshot ({min_duty_cycle} < {max_duty_cycle}):", self.duty_cycle_input)
+        self.flo.addRow("Current dshot value: ", self.current_duty_cycle)
         self.flo.addRow("Current RPM: ", self.current_rpm_label)
         self.flo.addRow("Spin time left: ", self.spin_time_left_label)
 

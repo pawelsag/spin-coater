@@ -11,9 +11,21 @@ set(PICO_PLATFORM rp2040) # Set the board used
 
 pico_sdk_init()
 
+set(SPIN_COATER_LIBS "pico_stdlib pico_cyw43_arch_lwip_threadsafe_background")
+set(SPIN_COATER_SRC spin_coater.cc)
+if(${PWM_MODE})
+        set(SPIN_COATER_LIBS "${SPIN_COATER_LIBS} hardware_pwm")
+elseif(${DSHOT_MODE})
+        set(SPIN_COATER_LIBS "${SPIN_COATER_LIBS} hardware_pio")
+        set(SPIN_COATER_SRC 
+            ${SPIN_COATER_SRC} 
+            dshot_encoder.cpp)
+endif()
+
+message(${SPIN_COATER_LIBS})
 
 add_executable(spin_coater
-        spin_coater.cc
+        ${SPIN_COATER_SRC}
         )
 
 target_include_directories(spin_coater PRIVATE
@@ -26,7 +38,14 @@ target_compile_definitions(spin_coater PRIVATE
         )
 
 # pull in common dependencies and additional pwm hardware support
-target_link_libraries(spin_coater pico_stdlib hardware_pwm pico_cyw43_arch_lwip_threadsafe_background)
+target_link_libraries(spin_coater pico_stdlib pico_cyw43_arch_lwip_threadsafe_background hardware_pwm)
+
+if(${PWM_MODE})
+target_compile_definitions(spin_coater PUBLIC SPIN_COATER_PWM_ENABLED=1)
+else()
+target_compile_definitions(spin_coater PUBLIC SPIN_COATER_DSHOT_ENABLED=1)
+pico_generate_pio_header(spin_coater ${CMAKE_CURRENT_LIST_DIR}/dshot_encoder.pio)
+endif()
 
 # create map/bin/hex file etc.
 pico_add_extra_outputs(spin_coater)

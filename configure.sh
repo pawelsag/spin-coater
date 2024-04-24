@@ -6,6 +6,23 @@ then
   exit 1
 fi
 
+PWM_MODE=0
+DSHOT_MODE=0
+
+spin_coater_mode=$1
+if [[ "$spin_coater_mode" = "pwm" ]]
+then
+  echo "PWM mode selected"
+  PWM_MODE=1
+elif [[ "$spin_coater_mode" = "dshot" ]]
+then
+  echo "DShot mode selected"
+  DSHOT_MODE=1
+else
+  echo "Select either pwm or dshot"
+  exit 1
+fi
+
 if [[ ! -f wifi.conf ]]
 then
 cat > wifi.conf << EOF
@@ -32,7 +49,7 @@ fi
 
 echo "Current ssid" $wifi_ssid
 
-cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=Y -GNinja -DWIFI_SSID="$wifi_ssid" -DWIFI_PASSWORD="$wifi_pass" -DPICO_SDK_PATH="$PICO_SDK_PATH"
+cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=Y -GNinja -DWIFI_SSID="$wifi_ssid" -DWIFI_PASSWORD="$wifi_pass" -DPICO_SDK_PATH="$PICO_SDK_PATH" -DPWM_MODE=$PWM_MODE -DDSHOT_MODE=$DSHOT_MODE
 # end of access point check
 
 if [[ ! -f ./compile_commands.json ]]
