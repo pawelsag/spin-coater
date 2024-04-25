@@ -6,46 +6,18 @@
 
 // Output PWM signals on pins 0 and 1
 
-#include "string.h"
 #include <chrono>
-#include <stdint.h>
-#include <stdio.h>
 
-#include "pico/divider.h"
-#include "pico/time.h"
-
-#include "lwip/pbuf.h"
-#include "lwip/tcp.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
+#include "lwip/pbuf.h"
+#include "lwip/tcp.h"
 
+#include "spin_coater.h"
 #if SPIN_COATER_PWM_ENABLED
-#include "hardware/clocks.h"
-#include "hardware/pwm.h"
+#include "coater_pwm.h"
 #elif SPIN_COATER_DSHOT_ENABLED
-#include "dshot_encoder.h"
-#endif
-
-#define TCP_PORT 4242
-#define DEBUG_printf printf
-#define BUF_SIZE 128
-
-#define SPIN_COATER_LOGIC_GP_NUM 2
-
-#if SPIN_COATER_PWM_ENABLED
-/* When using pwm 60 hz, we can set duty between 6-12 */
-/* When using pwm 50 hz, we can set duty between 5-10 */
-#define PWM_INIT_FREQ 490
-#define PWM_DUTY_MIN 49
-#define PWM_DUTY_MAX 98
-#define PWM_IDLE_DUTY PWM_DUTY_MIN
-/* Normaly IDLE state for the engine is 49% pwm duty
-   but since the engine is under load it starts spining from 53$
-   instead of 49 % pwm duty cycle. This variable was added to speed up process
-   of spining up the engine in automatic mode with timer */
-#define PWM_HEAVY_LOADED_IDLE_DUTY 52
-#elif SPIN_COATER_DSHOT_ENABLED
-#define DSHOT_HEAVY_LOADED_IDLE_DUTY 150
+#include "coater_dshot.h"
 #endif
 
 /* Since distance between wholes is not ideally equal
@@ -58,42 +30,6 @@ constexpr uint64_t microseconds_in_minute = 60000000;
 uint64_t last_time;
 uint32_t current_rpm;
 
-typedef enum
-{
-  STATE_DISCONNECTED = 0,
-  STATE_LISTENING,
-  STATE_CONNECTED,
-} server_state_t;
-
-typedef enum
-{
-  SPIN_IDLE = 0,
-  SPIN_STARTED_WITH_TIMER,
-  SPIN_STARTED_WITH_FORCE_VALUE,
-} spin_state_t;
-
-typedef struct
-{
-  struct tcp_pcb* server_pcb;
-  struct tcp_pcb* client_pcb;
-  uint8_t recv_buffer[BUF_SIZE];
-  u16_t recv_len;
-} tcp_server_context_t;
-
-typedef struct
-{
-  tcp_server_context_t ctx;
-  server_state_t connection_state;
-#if SPIN_COATER_PWM_ENABLED
-  uint32_t pwm_duty;
-  uint pwm_slice_num;
-#elif SPIN_COATER_DSHOT_ENABLED
-  uint32_t dshot_throttle_val;
-#endif
-  uint32_t set_rpm;
-  spin_state_t spin_state;
-  alarm_id_t timer_id;
-} spin_coater_context_t;
 
 static err_t
 tcp_server_send_data(spin_coater_context_t* ctx,
@@ -130,69 +66,6 @@ gpio_callback(uint gpio, uint32_t events)
   count_of_measurements = 0;
 }
 
-#if SPIN_COATER_PWM_ENABLED
-bool
-pwm_set_freq_duty(uint32_t slice_num,
-                  uint32_t chan,
-                  uint32_t freq,
-                  int duty_cycle)
-{
-
-  uint8_t clk_divider = 0;
-  uint32_t wrap = 0;
-  uint32_t clock_div = 0;
-  uint32_t clock = clock_get_hz(clk_sys);
-
-  for (clk_divider = 1; clk_divider < UINT8_MAX; clk_divider++) {
-    /* Find clock_division to fit current frequency */
-    clock_div = div_u32u32(clock, clk_divider);
-    wrap = div_u32u32(clock_div, freq);
-    if (div_u32u32(clock_div, UINT16_MAX) <= freq && wrap <= UINT16_MAX) {
-      break;
-    }
-  }
-  if (clk_divider < UINT8_MAX) {
-    /* Only considering whole number division */
-    pwm_set_clkdiv_int_frac(slice_num, clk_divider, 0);
-    pwm_set_enabled(slice_num, true);
-    pwm_set_wrap(slice_num, (uint16_t)wrap);
-    pwm_set_chan_level(
-      slice_num,
-      chan,
-      (uint16_t)div_u32u32(
-        (((uint16_t)(duty_cycle == 100 ? (wrap + 1) : wrap)) * duty_cycle),
-        100));
-  } else
-    return false;
-
-  return true;
-}
-
-bool
-set_pwm_safe(spin_coater_context_t* ctx, unsigned duty)
-{
-  if (duty < PWM_DUTY_MIN || duty > PWM_DUTY_MAX)
-    return false;
-
-  ctx->pwm_duty = duty;
-  DEBUG_printf("\n PWM set to: %lu!\n", duty);
-  return pwm_set_freq_duty(ctx->pwm_slice_num, PWM_CHAN_A, PWM_INIT_FREQ, duty);
-}
-#elif SPIN_COATER_DSHOT_ENABLED
-bool
-set_dshot_safe(spin_coater_context_t* ctx, unsigned dshot)
-{
-  if (dshot < MIN_THROTTLE_COMMAND || dshot > MAX_THROTTLE_COMMAND)
-    return false;
-
-  ctx->dshot_throttle_val = dshot;
-  DEBUG_printf("\n DSHOT set to: %lu!\n", dshot);
-  dshot_send_command(ctx->dshot_throttle_val);
-  return true;
-}
-
-#endif
-
 static err_t
 tcp_server_close(void* arg)
 {
@@ -220,6 +93,7 @@ tcp_server_close(void* arg)
   }
   return err;
 }
+
 static err_t
 tcp_server_sent(void* ctx_, struct tcp_pcb* tpcb, u16_t len)
 {
@@ -266,7 +140,7 @@ timer_spin_callback(alarm_id_t id, void* user_data)
   }
 #endif
 
-  ctx->spin_state = SPIN_IDLE;
+  ctx->spin_state = SPIN_SMOOTH_STOP_REQUESTED;
   const char* msg = "spin_stopped\n";
   tcp_server_send_data(
     ctx, ctx->ctx.client_pcb, (const uint8_t*)msg, strlen(msg));
@@ -361,7 +235,7 @@ command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable& feedback)
     return;
   }
 #endif
-    ctx->spin_state = SPIN_IDLE;
+    ctx->spin_state = SPIN_SMOOTH_STOP_REQUESTED;
     cancel_alarm(ctx->timer_id);
     const char* msg = "spin_stopped\n";
     feedback(msg, strlen(msg));
@@ -476,6 +350,43 @@ tcp_server_open(void* ctx_)
   return true;
 }
 
+#if SPIN_COATER_PWM_ENABLED
+absolute_time_t do_pwm_smooth_transition(spin_coater_context_t* sp_ctx)
+{
+  int direction = current_rpm < sp_ctx->set_rpm ? 1 : -1;
+
+  sp_ctx->pwm_duty += direction;
+  set_pwm_safe(sp_ctx, sp_ctx->pwm_duty);
+
+  return make_timeout_time_ms(100);
+}
+#elif SPIN_COATER_DSHOT_ENABLED
+
+int scale_dshot_value_when_speeding(spin_coater_context_t* sp_ctx, int rpm_left){
+    return (50 / sp_ctx->set_rpm) * rpm_left + 0;
+}
+
+int scale_dshot_value_when_stopping(spin_coater_context_t* sp_ctx, int rpm_left){
+    return 50 - (50 / sp_ctx->set_rpm) * rpm_left;
+}
+
+absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
+{
+  int direction = current_rpm < sp_ctx->set_rpm ? 1 : -1;
+  int rpm_diff = sp_ctx->set_rpm - current_rpm;
+  if(SPIN_STARTED_WITH_TIMER & sp_ctx->spin_state)
+    sp_ctx->dshot_throttle_val += scale_dshot_value_when_speeding(sp_ctx, rpm_diff)*direction;
+  else if(SPIN_SMOOTH_STOP_REQUESTED & sp_ctx->spin_state){
+    sp_ctx->dshot_throttle_val -= scale_dshot_value_when_stopping(sp_ctx, rpm_diff);
+    if(rpm_diff > (sp_ctx->set_rpm -100))
+      sp_ctx->dshot_throttle_val = MIN_THROTTLE_COMMAND;
+      sp_ctx->spin_state = SPIN_IDLE;
+  }
+  set_dshot_safe(sp_ctx, sp_ctx->dshot_throttle_val);
+  return make_timeout_time_ms(10);
+}
+#endif
+
 void
 run_tcp_server_test(spin_coater_context_t* sp_ctx)
 {
@@ -483,19 +394,16 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
     return;
   }
 
-  absolute_time_t rpm_update_deadline = make_timeout_time_ms(300);
-  absolute_time_t timer_update_deadline = make_timeout_time_ms(1);
+  absolute_time_t update_deadline = make_timeout_time_ms(100);
+  absolute_time_t rpm_notify_deadline = make_timeout_time_ms(1);
   const char* rpm_str = "rpm: %u\n";
   char send_buf[BUF_SIZE];
+
   while (sp_ctx->connection_state != STATE_DISCONNECTED) {
-    cyw43_arch_wait_for_work_until(sp_ctx->spin_state == SPIN_STARTED_WITH_TIMER
-                                     ? timer_update_deadline
-                                     : rpm_update_deadline);
+    cyw43_arch_wait_for_work_until(update_deadline);
     cyw43_arch_poll();
 
-    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_update_deadline) {
-      rpm_update_deadline = make_timeout_time_ms(300);
-
+    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_notify_deadline && sp_ctx->spin_state != SPIN_IDLE) {
       int number_of_chars =
         snprintf(send_buf,
                  BUF_SIZE,
@@ -506,28 +414,19 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
                            sp_ctx->ctx.client_pcb,
                            (const uint8_t*)send_buf,
                            number_of_chars);
+
+      rpm_notify_deadline = make_timeout_time_ms(300);
     }
-    if (sp_ctx->ctx.client_pcb && get_absolute_time() > timer_update_deadline &&
-        sp_ctx->spin_state == SPIN_STARTED_WITH_TIMER) {
-      if (current_rpm < sp_ctx->set_rpm - 200) {
+
+    if (sp_ctx->ctx.client_pcb && get_absolute_time() > update_deadline &&
+        sp_ctx->spin_state == (SPIN_STARTED_WITH_TIMER | SPIN_SMOOTH_STOP_REQUESTED)) {
 #if SPIN_COATER_PWM_ENABLED
-        sp_ctx->pwm_duty++;
-        set_pwm_safe(sp_ctx, sp_ctx->pwm_duty);
+      update_deadline = do_pwm_smooth_transition(sp_ctx);
 #elif SPIN_COATER_DSHOT_ENABLED
-        sp_ctx->dshot_throttle_val++;
-        set_dshot_safe(sp_ctx, sp_ctx->dshot_throttle_val);
+      update_deadline = do_dshot_smooth_transition(sp_ctx);
 #endif
-      }else if(current_rpm > sp_ctx->set_rpm + 300)
-      {
-#if SPIN_COATER_PWM_ENABLED
-        sp_ctx->pwm_duty--;
-        set_pwm_safe(sp_ctx, sp_ctx->pwm_duty);
-#elif SPIN_COATER_DSHOT_ENABLED
-        sp_ctx->dshot_throttle_val--;
-        set_dshot_safe(sp_ctx, sp_ctx->dshot_throttle_val);
-#endif
-      }
-      timer_update_deadline = make_timeout_time_ms(1000);
+    }else{
+      update_deadline = make_timeout_time_ms(100);
     }
   }
 
@@ -591,6 +490,8 @@ main()
 #if SPIN_COATER_PWM_ENABLED
   sp_ctx->pwm_slice_num = slice_num;
   sp_ctx->pwm_duty = PWM_IDLE_DUTY;
+#elif SPIN_COATER_DSHOT_ENABLED
+  sp_ctx->dshot_throttle_val = MIN_THROTTLE_COMMAND;
 #endif
   sp_ctx->set_rpm = 0;
   sp_ctx->spin_state = SPIN_IDLE;

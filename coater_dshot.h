@@ -2,9 +2,11 @@
 #define __PICO_DSHOT_DSHOT_ENCODER_H__
 
 #include <stdint.h>
+#include "spin_coater.h"
 
-constexpr uint16_t MIN_THROTTLE_COMMAND = 48;
-constexpr uint16_t MAX_THROTTLE_COMMAND = 2047;
+#define MIN_THROTTLE_COMMAND 48
+#define MAX_THROTTLE_COMMAND 2047
+#define DSHOT_HEAVY_LOADED_IDLE_DUTY 150
 
 // Init PIO, but do not output data yet
 // If enable_repeat is true, the PIO will continuously output the last provided value at
@@ -25,5 +27,8 @@ void dshot_send_throttle(double t);
 // Stop generating output (until next send command)
 // It is not necessary to call this when enable_repeat is false
 void dshot_stop();
+
+bool
+set_dshot_safe(spin_coater_context_t* ctx, unsigned dshot);
 
 #endif
