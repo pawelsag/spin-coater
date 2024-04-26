@@ -6,6 +6,7 @@
 
 // Output PWM signals on pins 0 and 1
 
+#include "hardware/timer.h"
 #include <chrono>
 
 #include "pico/cyw43_arch.h"
@@ -24,10 +25,10 @@
    we use count_of_measurements variable to omit in between wholes and meassure time
    after full cycle */
 constexpr uint64_t number_of_wholes = 2;
-uint64_t count_of_measurements;
+uint32_t count_of_measurements;
 
 constexpr uint64_t microseconds_in_minute = 60000000;
-uint64_t last_time;
+uint32_t last_time;
 uint32_t current_rpm;
 
 
@@ -47,7 +48,7 @@ void
 gpio_callback(uint gpio, uint32_t events)
 {
   if (count_of_measurements == 0) {
-    last_time = time_us_64();
+    last_time = time_us_32();
     count_of_measurements++;
     return;
   }
@@ -59,10 +60,9 @@ gpio_callback(uint gpio, uint32_t events)
   uint64_t current_time_us;
   uint64_t time_elapsed_us;
 
-  current_time_us = time_us_64();
+  current_time_us = time_us_32();
   time_elapsed_us = current_time_us - last_time;
   current_rpm = (microseconds_in_minute / time_elapsed_us);
-
   count_of_measurements = 0;
 }
 
@@ -402,32 +402,35 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
   while (sp_ctx->connection_state != STATE_DISCONNECTED) {
     cyw43_arch_wait_for_work_until(update_deadline);
     cyw43_arch_poll();
+    printf("%lu\n", current_rpm);
+    update_deadline = make_timeout_time_ms(300);
 
-    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_notify_deadline && sp_ctx->spin_state != SPIN_IDLE) {
-      int number_of_chars =
-        snprintf(send_buf,
-                 BUF_SIZE,
-                 rpm_str,
-                 current_rpm);
-
-      tcp_server_send_data(sp_ctx,
-                           sp_ctx->ctx.client_pcb,
-                           (const uint8_t*)send_buf,
-                           number_of_chars);
-
-      rpm_notify_deadline = make_timeout_time_ms(300);
-    }
-
-    if (sp_ctx->ctx.client_pcb && get_absolute_time() > update_deadline &&
-        sp_ctx->spin_state == (SPIN_STARTED_WITH_TIMER | SPIN_SMOOTH_STOP_REQUESTED)) {
-#if SPIN_COATER_PWM_ENABLED
-      update_deadline = do_pwm_smooth_transition(sp_ctx);
-#elif SPIN_COATER_DSHOT_ENABLED
-      update_deadline = do_dshot_smooth_transition(sp_ctx);
-#endif
-    }else{
-      update_deadline = make_timeout_time_ms(100);
-    }
+//
+//    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_notify_deadline && sp_ctx->spin_state != SPIN_IDLE) {
+//      int number_of_chars =
+//        snprintf(send_buf,
+//                 BUF_SIZE,
+//                 rpm_str,
+//                 current_rpm);
+//
+//      tcp_server_send_data(sp_ctx,
+//                           sp_ctx->ctx.client_pcb,
+//                           (const uint8_t*)send_buf,
+//                           number_of_chars);
+//
+//      rpm_notify_deadline = make_timeout_time_ms(300);
+//    }
+//
+//    if (sp_ctx->ctx.client_pcb && get_absolute_time() > update_deadline &&
+//        sp_ctx->spin_state == (SPIN_STARTED_WITH_TIMER | SPIN_SMOOTH_STOP_REQUESTED)) {
+//#if SPIN_COATER_PWM_ENABLED
+//      update_deadline = do_pwm_smooth_transition(sp_ctx);
+//#elif SPIN_COATER_DSHOT_ENABLED
+//      update_deadline = do_dshot_smooth_transition(sp_ctx);
+//#endif
+//    }else{
+//      update_deadline = make_timeout_time_ms(200);
+//    }
   }
 
   free(sp_ctx);
