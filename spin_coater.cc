@@ -27,7 +27,7 @@
 constexpr uint64_t number_of_wholes = 2;
 uint32_t count_of_measurements;
 
-constexpr uint64_t microseconds_in_minute = 60000000;
+constexpr uint32_t microseconds_in_minute = 60000000;
 uint32_t last_time;
 uint32_t current_rpm;
 
@@ -44,9 +44,12 @@ command_handler(spin_coater_context_t* ctx,
                 uint8_t* buffer,
                 Callable& feedback);
 
+int callback_cnt;
+
 void
 gpio_callback(uint gpio, uint32_t events)
 {
+  callback_cnt++;
   if (count_of_measurements == 0) {
     last_time = time_us_32();
     count_of_measurements++;
@@ -57,13 +60,13 @@ gpio_callback(uint gpio, uint32_t events)
     return;
   }
 
-  uint64_t current_time_us;
-  uint64_t time_elapsed_us;
-
+  uint32_t current_time_us;
+  uint32_t time_elapsed_us;
   current_time_us = time_us_32();
   time_elapsed_us = current_time_us - last_time;
   current_rpm = (microseconds_in_minute / time_elapsed_us);
   count_of_measurements = 0;
+
 }
 
 static err_t
@@ -387,6 +390,12 @@ absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
 }
 #endif
 
+bool timer_callback(repeating_timer_t *rt) {
+  printf("[TIMER]: %lu - %lu \n", callback_cnt, time_us_32());
+  callback_cnt = 0;
+  return true;
+}
+
 void
 run_tcp_server_test(spin_coater_context_t* sp_ctx)
 {
@@ -399,10 +408,20 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
   const char* rpm_str = "rpm: %u\n";
   char send_buf[BUF_SIZE];
 
+  repeating_timer_t timer;
+  if (!add_repeating_timer_us(2000*1000, timer_callback, NULL, &timer)) {
+        printf("Failed to add timer\n");
+        return;
+  }
+
   while (sp_ctx->connection_state != STATE_DISCONNECTED) {
     cyw43_arch_wait_for_work_until(update_deadline);
     cyw43_arch_poll();
-    printf("%lu\n", current_rpm);
+
+    //if(get_absolute_time() > update_deadline){
+    //  printf("%lu\n", current_rpm);
+    //}
+
     update_deadline = make_timeout_time_ms(300);
 
 //
@@ -447,7 +466,7 @@ main()
   stdio_init_all();
 
   gpio_set_irq_enabled_with_callback(
-    16, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    22, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
 #if SPIN_COATER_PWM_ENABLED
   // Tell GPIO 0 and 1 they are allocated to the PWM
