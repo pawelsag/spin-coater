@@ -64,7 +64,6 @@ class spin_coater():
                         self.parent.countdownThread = spin_coater.CountdownThread()
                         self.parent.countdownThread.parent = self.parent
                         self.parent.countdownThread.start()
-                        print(f"Duty Cycle: {value.strip()}")
                     elif key.strip() == "spin_stopped":
                         self.parent.spin_apply_button.setText("Start spinning")
                         self.parent.spin_started = False

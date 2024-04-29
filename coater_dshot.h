@@ -6,7 +6,7 @@
 
 #define MIN_THROTTLE_COMMAND 48
 #define MAX_THROTTLE_COMMAND 2047
-#define DSHOT_HEAVY_LOADED_IDLE_DUTY 150
+#define DSHOT_HEAVY_LOADED_IDLE_DUTY 100
 
 // Init PIO, but do not output data yet
 // If enable_repeat is true, the PIO will continuously output the last provided value at

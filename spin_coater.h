@@ -21,9 +21,9 @@ typedef enum
 typedef enum
 {
   SPIN_IDLE = 0,
-  SPIN_STARTED_WITH_TIMER = (1<<0),
-  SPIN_STARTED_WITH_FORCE_VALUE = (1<<1),
-  SPIN_SMOOTH_STOP_REQUESTED = (1<<2),
+  SPIN_STARTED_WITH_TIMER,
+  SPIN_STARTED_WITH_FORCE_VALUE,
+  SPIN_SMOOTH_STOP_REQUESTED,
 } spin_state_t;
 
 typedef struct
