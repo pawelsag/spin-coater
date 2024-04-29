@@ -36,25 +36,6 @@ void dshot_send_command(uint16_t c) {
   pio_sm_put_blocking(pio, pio_sm, c);
 }
 
-void dshot_send_throttle(double t) {
-  dshot_send_command(dshot_get_throttlec_command(t));
-}
-
-uint16_t dshot_get_throttlec_command(double t) {
-  if (t < 0) t = 0;
-  if (t > 1) t = 1;
-
-  uint16_t c = MIN_THROTTLE_COMMAND + t * (MAX_THROTTLE_COMMAND - MIN_THROTTLE_COMMAND);
-  if (c < MIN_THROTTLE_COMMAND) c = MIN_THROTTLE_COMMAND;
-  if (c > MAX_THROTTLE_COMMAND) c = MAX_THROTTLE_COMMAND;
-  return c;
-}
-
-void dshot_stop() {
-  // Signal PIO to wait for the next push
-  pio_sm_put_blocking(pio, pio_sm, 0);
-}
-
 bool
 set_dshot_safe(spin_coater_context_t* ctx, unsigned dshot)
 {

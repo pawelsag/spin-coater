@@ -66,7 +66,6 @@ gpio_callback(uint gpio, uint32_t events)
   time_elapsed_us = current_time_us - last_time;
   current_rpm = (microseconds_in_minute / time_elapsed_us);
   count_of_measurements = 0;
-
 }
 
 static err_t
@@ -390,12 +389,6 @@ absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
 }
 #endif
 
-bool timer_callback(repeating_timer_t *rt) {
-  printf("[TIMER]: %lu - %lu \n", callback_cnt, time_us_32());
-  callback_cnt = 0;
-  return true;
-}
-
 void
 run_tcp_server_test(spin_coater_context_t* sp_ctx)
 {
@@ -408,48 +401,35 @@ run_tcp_server_test(spin_coater_context_t* sp_ctx)
   const char* rpm_str = "rpm: %u\n";
   char send_buf[BUF_SIZE];
 
-  repeating_timer_t timer;
-  if (!add_repeating_timer_us(2000*1000, timer_callback, NULL, &timer)) {
-        printf("Failed to add timer\n");
-        return;
-  }
-
   while (sp_ctx->connection_state != STATE_DISCONNECTED) {
     cyw43_arch_wait_for_work_until(update_deadline);
     cyw43_arch_poll();
 
-    //if(get_absolute_time() > update_deadline){
-    //  printf("%lu\n", current_rpm);
-    //}
+    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_notify_deadline && sp_ctx->spin_state != SPIN_IDLE) {
+      int number_of_chars =
+        snprintf(send_buf,
+                 BUF_SIZE,
+                 rpm_str,
+                 current_rpm);
 
-    update_deadline = make_timeout_time_ms(300);
+      tcp_server_send_data(sp_ctx,
+                           sp_ctx->ctx.client_pcb,
+                           (const uint8_t*)send_buf,
+                           number_of_chars);
 
-//
-//    if (sp_ctx->ctx.client_pcb && get_absolute_time() > rpm_notify_deadline && sp_ctx->spin_state != SPIN_IDLE) {
-//      int number_of_chars =
-//        snprintf(send_buf,
-//                 BUF_SIZE,
-//                 rpm_str,
-//                 current_rpm);
-//
-//      tcp_server_send_data(sp_ctx,
-//                           sp_ctx->ctx.client_pcb,
-//                           (const uint8_t*)send_buf,
-//                           number_of_chars);
-//
-//      rpm_notify_deadline = make_timeout_time_ms(300);
-//    }
-//
-//    if (sp_ctx->ctx.client_pcb && get_absolute_time() > update_deadline &&
-//        sp_ctx->spin_state == (SPIN_STARTED_WITH_TIMER | SPIN_SMOOTH_STOP_REQUESTED)) {
-//#if SPIN_COATER_PWM_ENABLED
-//      update_deadline = do_pwm_smooth_transition(sp_ctx);
-//#elif SPIN_COATER_DSHOT_ENABLED
-//      update_deadline = do_dshot_smooth_transition(sp_ctx);
-//#endif
-//    }else{
-//      update_deadline = make_timeout_time_ms(200);
-//    }
+      rpm_notify_deadline = make_timeout_time_ms(300);
+    }
+
+    if (sp_ctx->ctx.client_pcb && get_absolute_time() > update_deadline &&
+        sp_ctx->spin_state == (SPIN_STARTED_WITH_TIMER | SPIN_SMOOTH_STOP_REQUESTED)) {
+#if SPIN_COATER_PWM_ENABLED
+      update_deadline = do_pwm_smooth_transition(sp_ctx);
+#elif SPIN_COATER_DSHOT_ENABLED
+      update_deadline = do_dshot_smooth_transition(sp_ctx);
+#endif
+    }else{
+      update_deadline = make_timeout_time_ms(200);
+    }
   }
 
   free(sp_ctx);
