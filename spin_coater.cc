@@ -32,6 +32,8 @@ constexpr uint32_t microseconds_in_minute = 60000000;
 uint32_t last_time;
 uint32_t current_rpm;
 
+#define  RPM_UPDATE_DEFAULT_DELAY 300
+#define  MAX_RPM_VALUE 6000
 
 static err_t
 tcp_server_send_data(spin_coater_context_t* ctx,
@@ -45,17 +47,16 @@ command_handler(spin_coater_context_t* ctx,
                 uint8_t* buffer,
                 Callable& feedback);
 
-int callback_cnt;
 
 void
 gpio_callback(uint gpio, uint32_t events)
 {
-  callback_cnt++;
   if (count_of_measurements == 0) {
     last_time = time_us_32();
     count_of_measurements++;
     return;
   }
+
   if (count_of_measurements < number_of_wholes) {
     count_of_measurements++;
     return;
@@ -138,6 +139,24 @@ timer_spin_callback(alarm_id_t id, void* user_data)
 }
 
 template<typename Callable>
+void send_help(Callable& feedback)
+{
+ const char *help = "Spin coater avaliable commands: \n"
+ "\"help\" - send this help msg\n"
+#if SPIN_COATER_PWM_ENABLED
+ "\"pwm: <val>\" - start spinning with given pwm value, can be <49, 98> \n"
+#elif SPIN_COATER_DSHOT_ENABLED
+ "\"dshot: <val>\" - start spinning with given dshot value, can be <48, 2048> \n"
+#endif
+ "\"spin_start:  <time> <rpm>\" - set spinner in automatic mode. Spinner will spin for given time and adjust the speed to requested RPM value. <rpm> can be up to 6000\n"
+ "\"spin_stop\" - stop spinner\n"
+ "\"speedup_delay: <delay>\" - set delay between dshot increase value during RPM speed up\n"
+ "\"slowdown_delay: <delay>\" - set delay between dshot decrease value during RPM slow down\n";
+
+ feedback(help, strlen(help));
+}
+
+template<typename Callable>
 static void
 command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable& feedback)
 {
@@ -191,6 +210,11 @@ command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable& feedback)
 #endif
   } else if (sscanf((const char*)buffer, "spin_start: %u %u", &arg, &arg2) ==
              2) {
+    if(arg2 > MAX_RPM_VALUE)
+    {
+      DEBUG_printf("RPM value to high. Max RPM can be %d\n", MAX_RPM_VALUE);
+      return;
+    }
     ctx->set_rpm = arg2;
 #if SPIN_COATER_PWM_ENABLED
     ctx->pwm_duty = PWM_HEAVY_LOADED_IDLE_DUTY;
@@ -227,6 +251,12 @@ command_handler(spin_coater_context_t* ctx, uint8_t* buffer, Callable& feedback)
     cancel_alarm(ctx->timer_id);
     const char* msg = "spin_stopped\n";
     feedback(msg, strlen(msg));
+  } else if(sscanf((const char*)buffer, "speedup_delay: %u", &arg) == 1) {
+    ctx->rpm_speedup_update_delay = arg;
+  } else if(sscanf((const char*)buffer, "slowdown_delay: %u", &arg) == 1) {
+    ctx->rpm_slowdown_update_delay = arg;
+  }else if (strncmp((const char*)buffer, "help", 4)== 0){
+    send_help(feedback);
   }
 }
 
@@ -298,6 +328,11 @@ tcp_server_accept(void* ctx_, struct tcp_pcb* client_pcb, err_t err)
   tcp_err(client_pcb, tcp_server_err);
 
   sp_ctx->connection_state = STATE_CONNECTED;
+
+  auto feedback_send = [&sp_ctx, client_pcb](const char* msg, const size_t msg_len) {
+    tcp_server_send_data(sp_ctx, client_pcb, (const uint8_t*)msg, msg_len);
+  };
+  send_help(feedback_send);
   return ERR_OK;
 }
 
@@ -366,7 +401,7 @@ absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
   if(SPIN_STARTED_WITH_TIMER == sp_ctx->spin_state){
     if(abs(rpm_diff) > 20)
       sp_ctx->dshot_throttle_val += scale_dshot_value_when_speeding(sp_ctx, abs(rpm_diff), 10*(current_rpm/double(sp_ctx->set_rpm)))*direction;
-    next_delay = make_timeout_time_ms(300);
+    next_delay = make_timeout_time_ms(sp_ctx->rpm_speedup_update_delay);
   }
   else if(SPIN_SMOOTH_STOP_REQUESTED == sp_ctx->spin_state) {
     sp_ctx->dshot_throttle_val -= scale_dshot_value_when_stopping(sp_ctx, abs(rpm_diff));
@@ -374,7 +409,7 @@ absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
         sp_ctx->dshot_throttle_val = MIN_THROTTLE_COMMAND;
         sp_ctx->spin_state = SPIN_IDLE;
       }
-    next_delay = make_timeout_time_ms(400);
+    next_delay = make_timeout_time_ms(sp_ctx->rpm_slowdown_update_delay);
   }else {
    next_delay = make_timeout_time_ms(1000); 
   }
@@ -492,6 +527,8 @@ main()
 #endif
   sp_ctx->set_rpm = 0;
   sp_ctx->spin_state = SPIN_IDLE;
+  sp_ctx->rpm_speedup_update_delay = RPM_UPDATE_DEFAULT_DELAY;
+  sp_ctx->rpm_slowdown_update_delay = RPM_UPDATE_DEFAULT_DELAY;
 
   run_tcp_server_test(sp_ctx);
   cyw43_arch_deinit();

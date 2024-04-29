@@ -44,6 +44,8 @@ typedef struct
 #elif SPIN_COATER_DSHOT_ENABLED
   uint32_t dshot_throttle_val;
 #endif
+  uint32_t rpm_speedup_update_delay;
+  uint32_t rpm_slowdown_update_delay;
   uint32_t set_rpm;
   spin_state_t spin_state;
   alarm_id_t timer_id;
