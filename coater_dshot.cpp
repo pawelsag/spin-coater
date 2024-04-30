@@ -1,9 +1,6 @@
 #include "coater_dshot.h"
 
-#include "hardware/clocks.h"
 #include "hardware/pio.h"
-
-#include "dshot_encoder.pio.h"
 
 #define DEBUG_printf printf
 
@@ -12,7 +9,7 @@ static int pio_sm = -1;
 
 static uint16_t dshot_get_throttlec_command(double t);
 
-bool dshot_init(uint16_t dshot_gpio, bool enable_repeat) {
+bool dshot_init(uint16_t dshot_gpio) {
   uint pio_offset = pio_add_program(pio, &dshot_encoder_program);
   pio_sm = pio_claim_unused_sm(pio, true);
 
@@ -21,7 +18,7 @@ bool dshot_init(uint16_t dshot_gpio, bool enable_repeat) {
     return false;
   }
 
-  dshot_encoder_program_init(pio, pio_sm, pio_offset, dshot_gpio, enable_repeat);
+  dshot_encoder_program_init(pio, pio_sm, pio_offset, dshot_gpio);
   return true;
 }
 

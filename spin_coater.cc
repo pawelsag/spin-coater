@@ -492,7 +492,7 @@ main()
   // Set the PWM running
   pwm_set_enabled(slice_num, true);
 #elif SPIN_COATER_DSHOT_ENABLED
-    dshot_init(SPIN_COATER_LOGIC_GP_NUM, true);
+    dshot_init(SPIN_COATER_LOGIC_GP_NUM);
     dshot_send_command(MIN_THROTTLE_COMMAND);
 #endif
 

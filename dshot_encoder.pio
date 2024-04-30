@@ -1,6 +1,8 @@
 .program dshot_encoder
 
 .define public BIT_PERIOD 40
+.define public MIN_THROTTHLE_VALUE 48
+.define public MAX_THROTTHLE_VALUE 2048
 
 .define ONE_HIGH 30
 .define ONE_LOW (BIT_PERIOD - ONE_HIGH)
@@ -15,31 +17,23 @@
 // 8kHz DShot300 -> 1500 frame period -> 1500 - (BIT_PERIOD * 16 + 1) = 859 delay
 .define FRAME_DELAY (32 - 2)
 .define FRAME_DELAY_COUNT 26
-.define FRAME_DELAY_REMAINDER (27 - 7)  // 27 = 859 - 32 * 26, -7 for other instructions
+.define FRAME_DELAY_REMAINDER (27 - 4)  // 27 = 859 - 32 * 26
 
 init:
-  ; These instructions are executed manually in the init function
-  ; pull block ; The very first value configures repeat enabled
-  ; mov isr, osr ; Store in ISR
-  ; Always block on the first pull
-  jmp blocking_pull
-
+  ; grab MIN_THROTTHLE  value from fifo and store it in scratch register
+  pull block
+  mov x, osr
+  jmp start_frame
 maybe_pull:
-  mov y, isr
-  jmp !y blocking_pull
-  pull noblock
-  ; Repeat mode is enabled, delay is needed to control frame rate
+  pull noblock ; if fifo empty, mov osr, x will be automatically performed
+  mov x, osr ; recycle value to reuse next time. In X we keep last throtthle value
   nop [FRAME_DELAY_REMAINDER]
   set y, FRAME_DELAY_COUNT
 frame_delay_loop:
   jmp !y start_frame [FRAME_DELAY]
   jmp y-- frame_delay_loop
-blocking_pull:
-  pull block
 start_frame:
-  mov x, osr ; Store the value for re-use next time
-  jmp !x blocking_pull ; wait for non-zero value
-  out y, 16 ; discard 16 most significant bits
+  out y, 16 ; discard 16 most significant bits, payload is only 16 bit
 check_bit:
   jmp !osre start_bit
   jmp maybe_pull
@@ -57,7 +51,9 @@ do_zero:
 
 
 % c-sdk {
-static inline void dshot_encoder_program_init(PIO pio, uint sm, uint offset, uint pin, bool enable_repeat) {
+#include "hardware/clocks.h"
+
+static inline void dshot_encoder_program_init(PIO pio, uint sm, uint offset, uint pin) {
     pio_sm_config c = dshot_encoder_program_get_default_config(offset);
 
     sm_config_set_set_pins(&c, pin, 1);
@@ -72,10 +68,7 @@ static inline void dshot_encoder_program_init(PIO pio, uint sm, uint offset, uin
 
     pio_sm_init(pio, sm, offset, &c);
 
-    pio_sm_put_blocking(pio, sm, enable_repeat);
-
-    pio_sm_exec_wait_blocking(pio, sm, pio_encode_pull(/*if_empty=*/false, /*block=*/true));
-    pio_sm_exec(pio, sm, pio_encode_mov(pio_isr, pio_osr));
+    pio_sm_put_blocking(pio, sm, dshot_encoder_MIN_THROTTHLE_VALUE);
 
     // The PIO will begin waiting for the first command value
     pio_sm_set_enabled(pio, sm, true);
