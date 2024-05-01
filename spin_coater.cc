@@ -399,8 +399,10 @@ absolute_time_t do_dshot_smooth_transition(spin_coater_context_t* sp_ctx)
   int rpm_diff = sp_ctx->set_rpm - current_rpm;
   absolute_time_t next_delay;
   if(SPIN_STARTED_WITH_TIMER == sp_ctx->spin_state){
-    if(abs(rpm_diff) > 20)
+    if(abs(rpm_diff) > 100)
       sp_ctx->dshot_throttle_val += scale_dshot_value_when_speeding(sp_ctx, abs(rpm_diff), 10*(current_rpm/double(sp_ctx->set_rpm)))*direction;
+    else if (abs(rpm_diff) > 10 )
+      sp_ctx->dshot_throttle_val += 1*direction;
     next_delay = make_timeout_time_ms(sp_ctx->rpm_speedup_update_delay);
   }
   else if(SPIN_SMOOTH_STOP_REQUESTED == sp_ctx->spin_state) {
@@ -476,7 +478,7 @@ main()
   stdio_init_all();
 
   gpio_set_irq_enabled_with_callback(
-    22, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    16, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
 #if SPIN_COATER_PWM_ENABLED
   // Tell GPIO 0 and 1 they are allocated to the PWM
